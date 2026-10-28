@@ -8156,6 +8156,25 @@ from_stream(std::basic_istream<CharT, Traits>& is, const CharT* fmt,
     return is;
 }
 
+namespace detail
+{
+
+// Return true if tp + d can be computed as a time_point<Clock, D> without overflow
+template <class Clock, class D>
+bool
+can_add(const std::chrono::time_point<Clock, days>& tp, const D& d)
+{
+    using T = std::chrono::time_point<Clock, D>;
+    using DD = std::chrono::duration<typename D::rep, days::period>;
+    using std::chrono::time_point_cast;
+    if (tp < time_point_cast<DD>(T::min()) || tp > time_point_cast<DD>(T::max()))
+        return false;
+    T const t = tp;
+    return d < D::zero() ? t >= T::min() - d : t <= T::max() - d;
+}
+
+}  // namespace detail
+
 template <class Duration, class CharT, class Traits, class Alloc = std::allocator<CharT>>
 std::basic_istream<CharT, Traits>&
 from_stream(std::basic_istream<CharT, Traits>& is, const CharT* fmt,
@@ -8172,16 +8191,17 @@ from_stream(std::basic_istream<CharT, Traits>& is, const CharT* fmt,
         is.setstate(std::ios::failbit);
     if (!is.fail())
     {
+        auto t = fds.tod.to_duration();
         if (offset_local != std::chrono::minutes::min())
+            t -= offset_local;
+        if (!detail::can_add(sys_days(fds.ymd), t))
         {
-            tp = round_i<Duration>(sys_days(fds.ymd) + fds.tod.to_duration() - offset_local);
-            if (offset != nullptr)
-                *offset = offset_local;
+            is.setstate(std::ios::failbit);
+            return is;
         }
-        else
-        {
-            tp = round_i<Duration>(sys_days(fds.ymd) + fds.tod.to_duration());
-        }
+        tp = round_i<Duration>(sys_days(fds.ymd) + t);
+        if (offset != nullptr && offset_local != std::chrono::minutes::min())
+            *offset = offset_local;
     }
     return is;
 }
@@ -8198,6 +8218,8 @@ from_stream(std::basic_istream<CharT, Traits>& is, const CharT* fmt,
     fds.has_tod = true;
     date::from_stream(is, fmt, fds, abbrev, offset);
     if (!fds.ymd.ok() || !fds.tod.in_conventional_range())
+        is.setstate(std::ios::failbit);
+    if (!is.fail() && !detail::can_add(local_days(fds.ymd), fds.tod.to_duration()))
         is.setstate(std::ios::failbit);
     if (!is.fail())
         tp = round_i<Duration>(local_seconds{local_days(fds.ymd)} + fds.tod.to_duration());

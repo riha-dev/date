@@ -1156,6 +1156,59 @@ test_wide_non_ascii()
     }
 }
 
+void
+test_out_of_range()
+{
+    using namespace std;
+    using namespace date;
+    using namespace std::chrono;
+    {
+        // last second representable by sys_time<nanoseconds>
+        istringstream in{"2262-04-11 23:47:16"};
+        sys_time<nanoseconds> tp;
+        in >> parse("%F %T", tp);
+        assert(!in.fail());
+        assert(tp == sys_days{2262_y/4/11} + 23h + 47min + 16s);
+    }
+    {
+        istringstream in{"2262-04-11 23:47:17"};
+        sys_time<nanoseconds> tp;
+        in >> parse("%F %T", tp);
+        assert(in.fail());
+    }
+    {
+        istringstream in{"9999-12-31 23:59:59"};
+        sys_time<nanoseconds> tp;
+        in >> parse("%F %T", tp);
+        assert(in.fail());
+    }
+    {
+        istringstream in{"1600-01-01 00:00:00"};
+        sys_time<nanoseconds> tp;
+        in >> parse("%F %T", tp);
+        assert(in.fail());
+    }
+    {
+        istringstream in{"2262-04-11 22:47:17 -0100"};
+        sys_time<nanoseconds> tp;
+        in >> parse("%F %T %z", tp);
+        assert(in.fail());
+    }
+    {
+        istringstream in{"9999-12-31 23:59:59"};
+        local_time<nanoseconds> tp;
+        in >> parse("%F %T", tp);
+        assert(in.fail());
+    }
+    {
+        istringstream in{"9999-12-31 23:59:59"};
+        sys_seconds tp;
+        in >> parse("%F %T", tp);
+        assert(!in.fail());
+        assert(tp == sys_days{9999_y/12/31} + 23h + 59min + 59s);
+    }
+}
+
 int
 main()
 {
@@ -1191,4 +1244,5 @@ main()
     test_n();
     test_t();
     test_wide_non_ascii();
+    test_out_of_range();
 }
